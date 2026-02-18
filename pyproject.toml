@@ -1,0 +1,103 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "notebooklm-wrapper"
+version = "0.1.0"
+description = "Pythonic wrapper for NotebookLM via notebooklm-mcp-cli MCP server"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [
+    { name = "ai-chitect" },
+]
+keywords = ["notebooklm", "wrapper", "mcp", "ai", "research"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
+]
+dependencies = [
+    "mcp>=1.26.0",
+    "notebooklm-mcp-cli>=0.3.0",
+    "pydantic>=2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "hatch>=1.0",
+    "pytest>=8.0",
+    "pytest-cov>=6.0",
+    "pytest-asyncio>=0.24",
+    "pytest-mock>=3.0",
+    "mypy>=1.13",
+    "ruff>=0.8",
+    "black>=24.0",
+    "isort>=5.13",
+]
+
+[project.urls]
+Homepage = "https://github.com/ai-chitect/notebooklm-wrapper"
+Repository = "https://github.com/ai-chitect/notebooklm-wrapper"
+Issues = "https://github.com/ai-chitect/notebooklm-wrapper/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/notebooklm_wrapper"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --strict-markers --tb=short"
+asyncio_mode = "auto"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = "notebooklm_wrapper.client"
+disable_error_code = ["no-untyped-def", "no-any-return", "return-value", "arg-type"]
+
+[[tool.mypy.overrides]]
+module = "notebooklm_wrapper.resources.*"
+disable_error_code = ["type-arg"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # pep8-naming
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+    "TCH",  # flake8-type-checking
+    "RUF",  # ruff-specific rules
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["notebooklm_wrapper"]
+
+[tool.pylint.messages_control]
+# E0401: False positives when IDE/interpreter does not use project venv (mcp, pydantic)
+disable = ["E0401"]
+
+[tool.coverage.run]
+source = ["src/notebooklm_wrapper"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 68
+show_missing = true
