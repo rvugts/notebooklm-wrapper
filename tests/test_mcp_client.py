@@ -97,14 +97,16 @@ async def test_connect_passes_home_env_when_config_dir_set() -> None:
         ctx.__aexit__ = AsyncMock(return_value=None)
         return ctx
 
-    with patch("notebooklm_wrapper._mcp_client.stdio_client", side_effect=fake_stdio_client):
-        with patch("notebooklm_wrapper._mcp_client.ClientSession") as mock_session:
-            mock_session.return_value.__aenter__ = AsyncMock()
-            mock_session.return_value.__aexit__ = AsyncMock(return_value=None)
-            mock_session.return_value.initialize = AsyncMock()
+    with (
+        patch("notebooklm_wrapper._mcp_client.stdio_client", side_effect=fake_stdio_client),
+        patch("notebooklm_wrapper._mcp_client.ClientSession") as mock_session,
+    ):
+        mock_session.return_value.__aenter__ = AsyncMock()
+        mock_session.return_value.__aexit__ = AsyncMock(return_value=None)
+        mock_session.return_value.initialize = AsyncMock()
 
-            manager = MCPClientManager(config_dir="/app/users/abc")
-            await manager.connect()
+        manager = MCPClientManager(config_dir="/app/users/abc")
+        await manager.connect()
 
     assert len(captured_params) == 1
     params = captured_params[0]
