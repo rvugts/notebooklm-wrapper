@@ -5,6 +5,7 @@ stdio_client, TextContent), typing.
 """
 
 import json
+import os
 import shutil
 from typing import Any, cast
 
@@ -54,12 +55,20 @@ def _parse_tool_result(
 class MCPClientManager:
     """Manages MCP server connection and tool calls."""
 
-    def __init__(self, profile: str | None = None) -> None:
+    def __init__(
+        self,
+        profile: str | None = None,
+        config_dir: str | None = None,
+    ) -> None:
         """Initialize manager.
 
         :param profile: Optional NotebookLM profile name for env.
+        :param config_dir: Optional directory for credential/config isolation (e.g.
+            per-user in multi-tenant apps). When set, the MCP server process is
+            run with HOME=config_dir so it uses config_dir/.notebooklm-mcp-cli.
         """
         self.profile = profile
+        self.config_dir = config_dir
         self._read: Any = None
         self._write: Any = None
         self._session: ClientSession | None = None
@@ -77,8 +86,12 @@ class MCPClientManager:
         command = _find_notebooklm_mcp()
         args: list[str] = []
         env: dict[str, str] | None = None
-        if self.profile:
-            env = {"NOTEBOOKLM_MCP_PROFILE": self.profile}
+        if self.profile or self.config_dir:
+            env = dict(os.environ)
+            if self.config_dir:
+                env["HOME"] = self.config_dir
+            if self.profile:
+                env["NOTEBOOKLM_MCP_PROFILE"] = self.profile
 
         server_params = StdioServerParameters(
             command=command,

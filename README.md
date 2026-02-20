@@ -100,6 +100,44 @@ notebooks = client.notebook.list()
 async_client = AsyncNotebookLMClient(profile="personal")
 ```
 
+## Multi-User / Web App
+
+For multi-tenant apps (e.g. on Google Cloud) where each user has their own NotebookLM credentials stored in your DB (encrypted) and obtained via OAuth, use **`config_dir`** to isolate credentials per user. The wrapper spawns one MCP server process per client; with a unique `config_dir` per user, that process uses a dedicated credential store under `config_dir/.notebooklm-mcp-cli`.
+
+1. **Store credentials:** After OAuth (or user-provided cookies), encrypt and store the cookie string in your DB keyed by user id.
+2. **Per request/session:** Create a user-specific directory (or use a persistent path per user), decrypt credentials from your DB, then create a client and inject tokens:
+
+```python
+import os
+from notebooklm_wrapper import AsyncNotebookLMClient
+
+async def notebooklm_client_for_user(user_id: str, decrypted_cookies: str):
+    # Use a dedicated dir per user so the MCP server stores credentials there
+    config_dir = f"/app/data/users/{user_id}"
+    os.makedirs(config_dir, exist_ok=True)
+
+    client = AsyncNotebookLMClient(
+        profile=user_id,
+        config_dir=config_dir,
+    )
+    # Inject credentials so the server can use them (first time or refresh)
+    await client.auth.save_tokens(cookies=decrypted_cookies)
+    return client
+
+# Then use the client as usual
+async def handle_request(user_id: str, ...):
+    cookies = get_encrypted_cookies_from_db(user_id)
+    decrypted = decrypt(cookies)
+    client = await notebooklm_client_for_user(user_id, decrypted)
+    try:
+        notebooks = await client.notebook.list()
+        # ...
+    finally:
+        await client.disconnect()
+```
+
+See [docs/multi-user-credentials-design.md](docs/multi-user-credentials-design.md) for how credential isolation works and design details.
+
 ## API Reference
 
 | Resource | Methods |
@@ -176,6 +214,12 @@ mypy src/
 
 # Publish to PyPI (after tests pass)
 ./scripts/publish.sh
+
+# Test OAuth + list notebooks (integration-style; opens browser for login)
+python scripts/test_oauth_list_notebooks.py
+# Reuse credentials in a directory (skip login next time):
+python scripts/test_oauth_list_notebooks.py --config-dir ./tmp_oauth_test
+python scripts/test_oauth_list_notebooks.py --config-dir ./tmp_oauth_test --skip-login
 ```
 
 ## Acknowledgments

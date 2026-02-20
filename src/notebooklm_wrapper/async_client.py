@@ -34,13 +34,20 @@ class AsyncNotebookLMClient:
         >>> asyncio.run(main())
     """
 
-    def __init__(self, profile: str | None = None) -> None:
+    def __init__(
+        self,
+        profile: str | None = None,
+        config_dir: str | None = None,
+    ) -> None:
         """Initialize async client.
 
         :param profile: NotebookLM profile to use. If None, uses default
             from nlm login.
+        :param config_dir: Optional directory for credential isolation (multi-user
+            apps). When set, the MCP server uses config_dir as HOME so
+            credentials live under config_dir/.notebooklm-mcp-cli.
         """
-        self._mcp = MCPClientManager(profile=profile)
+        self._mcp = MCPClientManager(profile=profile, config_dir=config_dir)
         self.notebook = NotebookResource(self._mcp)
         self.source = SourceResource(self._mcp)
         self.chat = ChatResource(self._mcp)

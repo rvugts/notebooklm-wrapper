@@ -1,9 +1,13 @@
-"""Tests for MCP client error mapping and tool name in exceptions.
+"""Tests for MCP client error mapping, tool name in exceptions, and config_dir.
 
 Dependencies: notebooklm_wrapper._mcp_client, notebooklm_wrapper.exceptions.
 """
 
 # pylint: disable=protected-access  # tests exercise _map_error API intentionally
+
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from notebooklm_wrapper._mcp_client import MCPClientManager
 from notebooklm_wrapper.exceptions import (
@@ -70,3 +74,39 @@ def test_map_error_empty_message() -> None:
     err = manager._map_error("", "unknown_tool")
     assert "[unknown_tool]" in str(err)
     assert "Unknown error" in str(err)
+
+
+def test_mcp_manager_config_dir_attribute() -> None:
+    """Test that MCPClientManager stores config_dir."""
+    manager = MCPClientManager(profile="u1", config_dir="/data/u1")
+    assert manager.profile == "u1"
+    assert manager.config_dir == "/data/u1"
+
+
+@pytest.mark.asyncio
+async def test_connect_passes_home_env_when_config_dir_set() -> None:
+    """Test that connect() passes HOME=config_dir in env when config_dir is set."""
+    captured_params = []
+
+    def fake_stdio_client(params):
+        captured_params.append(params)
+        read = MagicMock()
+        write = MagicMock()
+        ctx = MagicMock()
+        ctx.__aenter__ = AsyncMock(return_value=(read, write))
+        ctx.__aexit__ = AsyncMock(return_value=None)
+        return ctx
+
+    with patch("notebooklm_wrapper._mcp_client.stdio_client", side_effect=fake_stdio_client):
+        with patch("notebooklm_wrapper._mcp_client.ClientSession") as mock_session:
+            mock_session.return_value.__aenter__ = AsyncMock()
+            mock_session.return_value.__aexit__ = AsyncMock(return_value=None)
+            mock_session.return_value.initialize = AsyncMock()
+
+            manager = MCPClientManager(config_dir="/app/users/abc")
+            await manager.connect()
+
+    assert len(captured_params) == 1
+    params = captured_params[0]
+    assert params.env is not None
+    assert params.env.get("HOME") == "/app/users/abc"

@@ -19,6 +19,7 @@ build/
 .coverage
 htmlcov/
 .mypy_cache/
+tmp_oauth_test/
 
 # IDE
 .vscode/

@@ -285,12 +285,18 @@ class NotebookLMClient:
         >>> response = client.chat.ask(notebook.id, "What are the main points?")
     """
 
-    def __init__(self, profile: str | None = None) -> None:
+    def __init__(
+        self,
+        profile: str | None = None,
+        config_dir: str | None = None,
+    ) -> None:
         """Initialize sync client.
 
         :param profile: NotebookLM profile to use. If None, uses default.
+        :param config_dir: Optional directory for credential isolation (multi-user
+            apps). When set, the MCP server uses config_dir as HOME.
         """
-        self._async_client = AsyncNotebookLMClient(profile=profile)
+        self._async_client = AsyncNotebookLMClient(profile=profile, config_dir=config_dir)
         self.notebook = SyncNotebookResource(self._async_client.notebook)
         self.source = SyncSourceResource(self._async_client.source)
         self.chat = SyncChatResource(self._async_client.chat)
