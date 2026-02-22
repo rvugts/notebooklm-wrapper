@@ -20,6 +20,7 @@ build/
 htmlcov/
 .mypy_cache/
 tmp_oauth_test/
+tmp_cookie_test/
 
 # IDE
 .vscode/
@@ -35,6 +36,10 @@ Thumbs.db
 # Environment variables
 .env
 .env.local
+
+# Cookie files (do not commit)
+cookies.txt
+*.cookies.txt
 
 # Ruff
 .ruff_cache/

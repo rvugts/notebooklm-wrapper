@@ -1,11 +1,17 @@
 """Research resource - deep research operations.
 
 Dependencies: MCPClientManager, ResearchImportResult, ResearchTask,
-BaseResource.
+BaseResource, NotebookLMTimeoutError.
 """
 
+import asyncio
+import time
+
+from ..exceptions import NotebookLMTimeoutError
 from ..models import ResearchImportResult, ResearchTask
 from .base import BaseResource
+
+_TERMINAL_STATUSES = frozenset({"completed", "success", "failed", "no_research"})
 
 
 class ResearchResource(BaseResource):
@@ -57,18 +63,31 @@ class ResearchResource(BaseResource):
         :param compact: Whether to return compact output.
         :param task_id: Optional specific task ID.
         :param query: Optional query filter.
-        :return: Research task status.
+        :return: Research task status (terminal status only).
+        :raises NotebookLMTimeoutError: If elapsed time >= max_wait and status is still non-terminal
         """
-        result = await self._call(
-            "research_status",
-            notebook_id=notebook_id,
-            poll_interval=poll_interval,
-            max_wait=max_wait,
-            compact=compact,
-            task_id=task_id,
-            query=query,
-        )
-        return ResearchTask.model_validate(result)
+        t0 = time.monotonic()
+        while True:
+            remaining = max(1, int(max_wait - (time.monotonic() - t0)))
+            result = await self._call(
+                "research_status",
+                notebook_id=notebook_id,
+                poll_interval=poll_interval,
+                max_wait=min(poll_interval, remaining),
+                compact=compact,
+                task_id=task_id,
+                query=query,
+            )
+            task = ResearchTask.model_validate(result)
+            if task.status in _TERMINAL_STATUSES:
+                return task
+            elapsed = time.monotonic() - t0
+            if elapsed >= max_wait:
+                raise NotebookLMTimeoutError(
+                    f"Research did not complete within {max_wait}s "
+                    f"(status={task.status!r}, elapsed={elapsed:.0f}s)"
+                )
+            await asyncio.sleep(poll_interval)
 
     async def import_sources(
         self,

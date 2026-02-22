@@ -220,6 +220,13 @@ python scripts/test_oauth_list_notebooks.py
 # Reuse credentials in a directory (skip login next time):
 python scripts/test_oauth_list_notebooks.py --config-dir ./tmp_oauth_test
 python scripts/test_oauth_list_notebooks.py --config-dir ./tmp_oauth_test --skip-login
+
+# Test paste-cookie flow (use a file for long cookie strings):
+echo "SID=...; __Secure-1PSID=...; ..." > cookies.txt   # paste from browser
+python scripts/test_cookie_list_notebooks.py --cookie-file cookies.txt
+# Or prompt for short cookie, or stdin:
+python scripts/test_cookie_list_notebooks.py
+cat cookies.txt | python scripts/test_cookie_list_notebooks.py --stdin
 ```
 
 ## Acknowledgments

@@ -97,12 +97,20 @@ class ChatResponse(BaseModel):
 class ResearchTask(BaseModel):
     """Research task status."""
 
-    task_id: str
-    notebook_id: str
+    task_id: str | None = None
+    notebook_id: str | None = None
     query: str | None = None
     source: str | None = None
     mode: str | None = None
-    status: Literal["pending", "running", "completed", "failed", "no_research"] = "pending"
+    status: Literal[
+        "pending",
+        "running",
+        "in_progress",
+        "completed",
+        "failed",
+        "no_research",
+        "success",
+    ] = "pending"
     sources_found: int = 0
     report: str | None = None
     sources: list[dict[str, Any]] = Field(default_factory=list)

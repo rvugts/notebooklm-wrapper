@@ -5,6 +5,8 @@ Dependencies: pytest, notebooklm_wrapper.
 
 import pytest
 
+from notebooklm_wrapper import NotebookLMTimeoutError
+
 
 @pytest.mark.asyncio
 async def test_research_start(async_client_with_mock_mcp: tuple) -> None:
@@ -45,6 +47,61 @@ async def test_research_status(async_client_with_mock_mcp: tuple) -> None:
     assert task.status == "completed"
     assert task.sources_found == 5
     assert task.report == "Summary..."
+
+
+@pytest.mark.asyncio
+async def test_research_status_raises_timeout_only_after_max_wait(
+    async_client_with_mock_mcp: tuple,
+) -> None:
+    """Raises NotebookLMTimeoutError only when elapsed >= max_wait and status still non-terminal."""
+    from unittest.mock import patch
+
+    client, mock_mcp = async_client_with_mock_mcp
+    mock_mcp.call_tool.return_value = {
+        "task_id": "task-1",
+        "notebook_id": "nb-1",
+        "status": "in_progress",
+        "sources_found": 0,
+    }
+    # t0=0, remaining uses 0 → 60, then elapsed uses 60 → 60 >= 60 → raise
+    with patch("notebooklm_wrapper.resources.research.time") as mock_time:
+        mock_time.monotonic.side_effect = [0, 0, 60]
+        with pytest.raises(NotebookLMTimeoutError) as exc_info:
+            await client.research.status("nb-1", max_wait=60)
+
+    assert "60" in str(exc_info.value)
+    assert "in_progress" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_research_status_returns_after_terminal_without_timeout(
+    async_client_with_mock_mcp: tuple,
+) -> None:
+    """When MCP returns terminal status (e.g. on second poll), returns without raising."""
+    from unittest.mock import AsyncMock, patch
+
+    client, mock_mcp = async_client_with_mock_mcp
+    mock_mcp.call_tool.side_effect = [
+        {"task_id": "t1", "notebook_id": "nb-1", "status": "in_progress", "sources_found": 0},
+        {
+            "task_id": "t1",
+            "notebook_id": "nb-1",
+            "status": "completed",
+            "sources_found": 2,
+            "report": "Done.",
+        },
+    ]
+    # First poll: elapsed stays low so we don't raise; second poll: completed → return
+    with (
+        patch("notebooklm_wrapper.resources.research.time") as mock_time,
+        patch("notebooklm_wrapper.resources.research.asyncio.sleep", new_callable=AsyncMock),
+    ):
+        mock_time.monotonic.side_effect = [0, 0, 10, 10]
+        task = await client.research.status("nb-1", max_wait=60, poll_interval=1)
+
+    assert task.status == "completed"
+    assert task.report == "Done."
+    assert mock_mcp.call_tool.call_count == 2
 
 
 @pytest.mark.asyncio
