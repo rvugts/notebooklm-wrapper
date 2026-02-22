@@ -166,6 +166,11 @@ class MCPClientManager:
         :param tool_name: Name of the tool that was called.
         :return: Concrete NotebookLMError subclass.
         """
+        if message and "no confirmation from api" in message.lower():
+            message = (
+                f"{message} "
+                "(This could mean the Deep Research limit was reached — try again later or upgrade)"
+            )
         full_message = f"[{tool_name}] {message}" if message else f"[{tool_name}] Unknown error"
         msg_lower = message.lower()
         if "auth" in msg_lower or "login" in msg_lower or "credential" in msg_lower:

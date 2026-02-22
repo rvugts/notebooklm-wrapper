@@ -35,6 +35,10 @@ So the error is raised when the **underlying NotebookLM client’s `start_resear
 3. **`notebook_id=None`** – Your test calls `research.start(..., notebook_id=None)`. The MCP server then calls the internal client with `notebook_id=None` (create-new-notebook path). That path might return a different response shape or no data in some cases.
 4. **Rate limiting / account** – Research can be rate-limited or restricted for some accounts; the API might respond with an empty or non-success result.
 
+## Mode parameter
+
+The research mode is passed as the literal string `"fast"` or `"deep"`. Both are valid: notebooklm-mcp-cli defines `VALID_MODES = ("fast", "deep")` and forwards `mode` to the client. If deep fails, it is not because the word is invalid—the API is returning no data for that request.
+
 ## What to try
 
 1. **Pass an existing notebook ID**  
@@ -51,6 +55,9 @@ So the error is raised when the **underlying NotebookLM client’s `start_resear
 
 4. **Compare with `nlm login`**  
    Run the same research flow (e.g. `nlm research start ...`) after a normal `nlm login` (browser) and see if it succeeds. If it works only with browser login, the difference is likely session/cookie/confirmation related.
+
+5. **"It was working before"**  
+   If deep research used to work and now fails with the same script: (a) refresh the cookie (re-login at notebooklm.google.com, copy a new cookie); (b) check `pip show notebooklm-mcp-cli` — a package update may have changed API behavior; (c) try starting deep research in the NotebookLM UI in the browser (same account). If it fails in the UI too, it’s account/API; if it works in the UI, cookie/session is missing something the browser has.
 
 ## Wrapper behavior
 

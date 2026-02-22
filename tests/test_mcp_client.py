@@ -76,6 +76,18 @@ def test_map_error_empty_message() -> None:
     assert "Unknown error" in str(err)
 
 
+def test_map_error_no_confirmation_adds_deep_research_hint() -> None:
+    """No-confirmation research error message gets Deep Research limit hint."""
+    manager = MCPClientManager()
+    msg = "Failed to start research — no confirmation from API."
+    err = manager._map_error(msg, "research_start")
+    assert isinstance(err, NotebookLMError)
+    assert "[research_start]" in str(err)
+    assert "no confirmation from API" in str(err)
+    assert "Deep Research limit" in str(err)
+    assert "try again later or upgrade" in str(err)
+
+
 def test_mcp_manager_config_dir_attribute() -> None:
     """Test that MCPClientManager stores config_dir."""
     manager = MCPClientManager(profile="u1", config_dir="/data/u1")

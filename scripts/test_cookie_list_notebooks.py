@@ -6,8 +6,9 @@ Use a file for the cookie string (recommended for long strings). Then:
     python scripts/test_cookie_list_notebooks.py --cookie-file cookies.txt
     python scripts/test_cookie_list_notebooks.py --cookie-file cookies.txt --research
 
-With --research: creates a new notebook first, then starts research using that
-notebook_id (avoids notebook_id=None which can cause "no confirmation from API").
+With --research: reuses notebook by title if it exists, else creates one; runs research
+(--mode fast|deep). Retries research.start() once on "no confirmation from API".
+Then adds the report as a text source. Use --no-add-report to skip.
 """
 
 import argparse
@@ -37,8 +38,11 @@ async def _save_tokens_and_list_notebooks(
     research_query: str = DEFAULT_RESEARCH_QUERY,
     research_title: str = DEFAULT_RESEARCH_TITLE,
     research_timeout: int = DEFAULT_RESEARCH_TIMEOUT,
+    research_output_file: Path | None = None,
+    add_report_as_source: bool = True,
+    research_mode: str = "deep",
 ) -> None:
-    """Save cookies via wrapper, list notebooks, and optionally run research in a new notebook."""
+    """Save cookies via wrapper, list notebooks, and optionally run research."""
     _ensure_src_on_path()
     from notebooklm_wrapper import AsyncNotebookLMClient, NotebookLMTimeoutError
 
@@ -67,14 +71,14 @@ async def _save_tokens_and_list_notebooks(
                 print(f"  notebook_id={notebook_id}")
                 created_new = True
 
-            print(f"Starting research (timeout={research_timeout}s): {research_query!r}")
+            print(f"Starting research (timeout={research_timeout}s, mode={research_mode}): {research_query!r}")
             try:
                 task = await client.research.start(
                     research_query,
                     notebook_id=notebook_id,
                     title=research_title,
                     source="web",
-                    mode="fast",
+                    mode=research_mode,
                 )
                 task_id = getattr(task, "task_id", None)
                 print(f"  task_id={task_id}, polling up to {research_timeout}s...")
@@ -95,7 +99,6 @@ async def _save_tokens_and_list_notebooks(
                 if status in ("completed", "success"):
                     print("  Research completed successfully.")
                     if not report:
-                        # compact=True may omit report; fetch once with compact=False
                         full = await client.research.status(
                             notebook_id,
                             max_wait=10,
@@ -107,10 +110,14 @@ async def _save_tokens_and_list_notebooks(
                         report = getattr(full, "report", None)
                         if not sources:
                             sources = getattr(full, "sources", None) or []
+                    output_lines: list[str] = []
                     if report:
                         print("\n--- Research report ---")
                         print(report)
                         print("---")
+                        output_lines.append("--- Research report ---")
+                        output_lines.append(report)
+                        output_lines.append("---")
                     elif sources:
                         print("\n--- Research sources ---")
                         for i, s in enumerate(sources, 1):
@@ -121,17 +128,43 @@ async def _save_tokens_and_list_notebooks(
                             if url:
                                 print(f"     {url}")
                             if snippet:
-                                print(f"     {snippet[:200]}{'...' if len(snippet) > 200 else ''}")
+                                print(f"     {snippet}")
+                            output_lines.append(f"{i}. {title}")
+                            if url:
+                                output_lines.append(f"   {url}")
+                            if snippet:
+                                output_lines.append(f"   {snippet}")
+                            output_lines.append("")
                         print("---")
+                        output_lines.append("---")
                     else:
                         print("  (No report or sources returned; check notebook in NotebookLM.)")
+                    if research_output_file and output_lines:
+                        research_output_file.write_text("\n".join(output_lines), encoding="utf-8")
+                        print(f"  Full output written to {research_output_file}")
+                    if add_report_as_source and report:
+                        try:
+                            add_result = await client.source.add(
+                                notebook_id,
+                                "text",
+                                text=report,
+                                title=research_title or "Research report",
+                                wait=True,
+                                wait_timeout=60.0,
+                            )
+                            sid = getattr(add_result, "source_id", None)
+                            print(f"  Added report as source (source_id={sid}).")
+                        except Exception as e:
+                            print(f"  Adding report as source failed: {e}", file=sys.stderr)
                 else:
                     print(f"  Research ended with status: {status}", file=sys.stderr)
                     if message:
                         print(f"  message: {message}", file=sys.stderr)
+                    if status == "no_research":
+                        print("  (No report produced. Try --mode fast or run again.)", file=sys.stderr)
                 suffix = " (will appear in list on next run)" if created_new else ""
                 print(f"  Notebook id: {notebook_id}{suffix}")
-            except NotebookLMTimeoutError as e:
+            except NotebookLMTimeoutError:
                 print(f"  Research timed out after {research_timeout}s.", file=sys.stderr)
                 raise
             except Exception as e:
@@ -175,7 +208,7 @@ def main() -> int:
     parser.add_argument(
         "--research",
         action="store_true",
-        help="After listing, create a new notebook and run a fast research job (uses notebook_id to avoid API issues).",
+        help="After listing, create/reuse notebook and run research, then add report as source.",
     )
     parser.add_argument(
         "--research-query",
@@ -187,13 +220,32 @@ def main() -> int:
         "--research-title",
         type=str,
         default=DEFAULT_RESEARCH_TITLE,
-        help="Title for the new notebook used by research (default: Cookie test research).",
+        help="Title for the notebook used by research (default: Cookie test research).",
     )
     parser.add_argument(
         "--research-timeout",
         type=int,
         default=DEFAULT_RESEARCH_TIMEOUT,
         help="Max seconds to wait for research (default: 300).",
+    )
+    parser.add_argument(
+        "--output",
+        "-o",
+        type=Path,
+        default=None,
+        metavar="FILE",
+        help="Write full research report/sources to FILE (no truncation).",
+    )
+    parser.add_argument(
+        "--no-add-report",
+        action="store_true",
+        help="Do not add the report as a text source to the notebook.",
+    )
+    parser.add_argument(
+        "--mode",
+        choices=("fast", "deep"),
+        default="deep",
+        help="Research mode: fast or deep (default: deep). Try --mode fast if start fails.",
     )
     args = parser.parse_args()
 
@@ -239,6 +291,9 @@ def main() -> int:
             research_query=args.research_query,
             research_title=args.research_title,
             research_timeout=args.research_timeout,
+            research_output_file=args.output.resolve() if args.output else None,
+            add_report_as_source=not args.no_add_report,
+            research_mode=args.mode,
         )
     )
     return 0

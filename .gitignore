@@ -43,3 +43,7 @@ cookies.txt
 
 # Ruff
 .ruff_cache/
+
+# Test files
+cookie.txt
+research.txt

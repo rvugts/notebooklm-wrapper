@@ -5,7 +5,7 @@ Dependencies: pytest, notebooklm_wrapper.
 
 import pytest
 
-from notebooklm_wrapper import NotebookLMTimeoutError
+from notebooklm_wrapper import NotebookLMError, NotebookLMTimeoutError
 
 
 @pytest.mark.asyncio
@@ -102,6 +102,68 @@ async def test_research_status_returns_after_terminal_without_timeout(
     assert task.status == "completed"
     assert task.report == "Done."
     assert mock_mcp.call_tool.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_research_start_retries_on_no_confirmation(
+    async_client_with_mock_mcp: tuple,
+) -> None:
+    """Retries on 'no confirmation from API' and succeeds on later attempt."""
+    from unittest.mock import AsyncMock, patch
+
+    client, mock_mcp = async_client_with_mock_mcp
+    mock_mcp.call_tool.side_effect = [
+        NotebookLMError("[research_start] Failed to start research — no confirmation from API."),
+        NotebookLMError("[research_start] Failed to start research — no confirmation from API."),
+        {
+            "task_id": "task-1",
+            "notebook_id": "nb-1",
+            "status": "pending",
+            "sources_found": 0,
+        },
+    ]
+    with patch(
+        "notebooklm_wrapper.resources.research.asyncio.sleep", new_callable=AsyncMock
+    ) as mock_sleep:
+        task = await client.research.start("AI risks", mode="deep", retries=3, retry_delay=1.0)
+
+    assert task.task_id == "task-1"
+    assert mock_mcp.call_tool.call_count == 3
+    assert mock_sleep.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_research_start_raises_after_all_retries_exhausted(
+    async_client_with_mock_mcp: tuple,
+) -> None:
+    """Raises the last error after all retries are exhausted."""
+    from unittest.mock import AsyncMock, patch
+
+    client, mock_mcp = async_client_with_mock_mcp
+    mock_mcp.call_tool.side_effect = NotebookLMError(
+        "[research_start] Failed to start research — no confirmation from API."
+    )
+    with (
+        patch("notebooklm_wrapper.resources.research.asyncio.sleep", new_callable=AsyncMock),
+        pytest.raises(NotebookLMError, match="no confirmation"),
+    ):
+        await client.research.start("AI risks", mode="deep", retries=2, retry_delay=1.0)
+
+    assert mock_mcp.call_tool.call_count == 3  # 1 initial + 2 retries
+
+
+@pytest.mark.asyncio
+async def test_research_start_does_not_retry_other_errors(
+    async_client_with_mock_mcp: tuple,
+) -> None:
+    """Non-'no confirmation' errors are raised immediately without retry."""
+    client, mock_mcp = async_client_with_mock_mcp
+    mock_mcp.call_tool.side_effect = NotebookLMError("Some other error")
+
+    with pytest.raises(NotebookLMError, match="Some other error"):
+        await client.research.start("AI risks", mode="deep", retries=3)
+
+    assert mock_mcp.call_tool.call_count == 1
 
 
 @pytest.mark.asyncio

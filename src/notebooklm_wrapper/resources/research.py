@@ -7,11 +7,12 @@ BaseResource, NotebookLMTimeoutError.
 import asyncio
 import time
 
-from ..exceptions import NotebookLMTimeoutError
+from ..exceptions import NotebookLMError, NotebookLMTimeoutError
 from ..models import ResearchImportResult, ResearchTask
 from .base import BaseResource
 
 _TERMINAL_STATUSES = frozenset({"completed", "success", "failed", "no_research"})
+_NO_CONFIRMATION = "no confirmation from api"
 
 
 class ResearchResource(BaseResource):
@@ -25,25 +26,44 @@ class ResearchResource(BaseResource):
         mode: str = "fast",
         notebook_id: str | None = None,
         title: str | None = None,
+        retries: int = 0,
+        retry_delay: float = 10.0,
     ) -> ResearchTask:
         """Start deep or fast research.
+
+        Google's API intermittently fails to acknowledge deep-research starts.
+        This method retries automatically on "no confirmation from API" errors.
 
         :param query: Research query.
         :param source: Source (e.g. web, drive).
         :param mode: Mode (e.g. fast, deep).
         :param notebook_id: Optional notebook to attach to.
         :param title: Optional research title.
+        :param retries: Max retry attempts on transient "no confirmation" errors.
+        :param retry_delay: Seconds between retries (doubles each attempt).
         :return: Research task status.
         """
-        result = await self._call(
-            "research_start",
-            query=query,
-            source=source,
-            mode=mode,
-            notebook_id=notebook_id,
-            title=title,
-        )
-        return ResearchTask.model_validate(result)
+        last_err: Exception | None = None
+        delay = retry_delay
+        for attempt in range(1 + retries):
+            try:
+                result = await self._call(
+                    "research_start",
+                    query=query,
+                    source=source,
+                    mode=mode,
+                    notebook_id=notebook_id,
+                    title=title,
+                )
+                return ResearchTask.model_validate(result)
+            except NotebookLMError as exc:
+                if _NO_CONFIRMATION not in str(exc).lower():
+                    raise
+                last_err = exc
+                if attempt < retries:
+                    await asyncio.sleep(delay)
+                    delay *= 2
+        raise last_err  # type: ignore[misc]
 
     async def status(
         self,
